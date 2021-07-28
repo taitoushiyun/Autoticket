@@ -17,11 +17,14 @@ from selenium.webdriver.support import expected_conditions as EC
 
 
 class Concert(object):
-    def __init__(self, session, price, date, real_name, nick_name, ticket_num, damai_url, target_url, browser):
+    def __init__(self, session, price, date, real_name, nick_name, ticket_num, damai_url, target_url, browser,
+                 linkman, tel):
         self.session = session  # 场次序号优先级
         self.price = price  # 票价序号优先级
         self.date = date # 日期选择
         self.real_name = real_name  # 实名者序号
+        self.linkman = linkman
+        self.tel = tel
         self.status = 0  # 状态标记
         self.time_start = 0  # 开始时间
         self.time_end = 0  # 结束时间
@@ -106,7 +109,7 @@ class Concert(object):
             self.driver = webdriver.Chrome(options=options)
         elif self.browser == 1: # 选择了火狐浏览器
             options = webdriver.FirefoxProfile()
-            options.set_preference('permissions.default.image', 2)  
+            options.set_preference('permissions.default.image', 1)
             self.driver = webdriver.Firefox(options)
         else: 
             raise Exception("***错误：未知的浏览器类别***")
@@ -140,23 +143,26 @@ class Concert(object):
 
         while self.driver.title.find('确认订单') == -1:  # 如果跳转到了确认界面就算这步成功了，否则继续执行此步
             self.num += 1 # 记录抢票轮数
-            
+            button = self.driver.find_element_by_xpath("/html/body/div[2]/div[2]/div/div/div[3]/div[2]")
+            button.click()
             if self.date != 0: # 如果需要选择日期
                 calendar = WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
                     EC.presence_of_element_located((By.CLASS_NAME, "functional-calendar")))
                 datelist = calendar.find_elements_by_css_selector("[class='wh_content_item']") # 找到能选择的日期
+                print(f'data 1 {datelist}')
                 datelist = datelist[7:] # 跳过前面7个表示周一~周日的元素
+                print(f'data 2 {datelist}')
                 datelist[self.date - 1].click() # 选择对应日期
             
             selects = self.driver.find_elements_by_class_name('perform__order__select')
-            # print('可选区域数量为：{}'.format(len(selects)))
+            print('可选区域数量为：{}'.format(len(selects)))
             for item in selects:
                 if item.find_element_by_class_name('select_left').text == '场次':
                     session = item
-                    # print('\t场次定位成功')
+                    print('\t场次定位成功')
                 elif item.find_element_by_class_name('select_left').text == '票档':
                     price = item
-                    # print('\t票档定位成功')
+                    print('\t票档定位成功')
 
             session_list = session.find_elements_by_class_name('select_right_list_item')
             print('可选场次数量为：{}'.format(len(session_list)))
@@ -193,10 +199,10 @@ class Concert(object):
             buybutton = self.driver.find_element_by_class_name('buybtn')
             buybutton_text = buybutton.text
             # print(buybutton_text)
-            
+
             def add_ticket(): # 设置增加票数
                 try:
-                    for i in range(self.ticket_num - 1):  
+                    for i in range(self.ticket_num - 1):
                         addbtn = WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
                             EC.presence_of_element_located((By.XPATH, "//div[@class='cafe-c-input-number']/a[2]")))
                         addbtn.click()
@@ -326,6 +332,12 @@ class Concert(object):
             print('###开始确认订单###')
             button_xpath = " //*[@id=\"confirmOrder_1\"]/div[%d]/button" # 同意以上协议并提交订单Xpath
             button_replace = 8 # 当实名者信息不空时为9，空时为8
+
+            self.driver.find_element_by_xpath(
+                '/html/body/div[3]/div[2]/div/div[1]/div[4]/div[1]/div[2]/span/input').send_keys(self.linkman)
+            self.driver.find_element_by_xpath(
+                '/html/body/div[3]/div[2]/div/div[1]/div[4]/div[2]/div[2]/span[2]/input').send_keys(self.tel)
+
             if self.real_name: # 实名者信息不为空
                 button_replace = 9
                 print('###选择购票人信息###')
@@ -340,7 +352,7 @@ class Concert(object):
             submitbtn = WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
                     EC.presence_of_element_located(
                         (By.XPATH, button_xpath%button_replace))) # 同意以上协议并提交订单
-            submitbtn.click()  
+            submitbtn.click()
             '''# 以下的方法更通用，但是更慢
             try:
                 buttons = self.driver.find_elements_by_tag_name('button') # 找出所有该页面的button
@@ -418,7 +430,7 @@ if __name__ == '__main__':
                     config = loads(f.read())
                 # params: 场次优先级，票价优先级，日期， 实名者序号, 用户昵称， 购买票数， 官网网址， 目标网址， 浏览器
         con = Concert(config['sess'], config['price'], config['date'], config['real_name'], config['nick_name'], config['ticket_num'],
-                      config['damai_url'], config['target_url'], config['browser'])
+                      config['damai_url'], config['target_url'], config['browser'], config['linkman'], config['tel'])
     except Exception as e:
         print(e)
         raise Exception("***错误：初始化失败，请检查配置文件***")
@@ -436,4 +448,4 @@ if __name__ == '__main__':
         except Exception as e:
             print(e)
             con.driver.get(con.target_url)
-    con.finish()
+    # con.finish()
