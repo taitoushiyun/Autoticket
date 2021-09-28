@@ -18,7 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 class Concert(object):
     def __init__(self, session, price, date, real_name, nick_name, ticket_num, damai_url, target_url, browser,
-                 linkman, tel):
+                 linkman, tel, cookie_name):
         self.session = session  # 场次序号优先级
         self.price = price  # 票价序号优先级
         self.date = date # 日期选择
@@ -38,6 +38,7 @@ class Concert(object):
         self.total_wait_time = 3 # 页面元素加载总等待时间
         self.refresh_wait_time = 0.3 # 页面元素等待刷新时间
         self.intersect_wait_time = 0.5 # 间隔等待时间，防止速度过快导致问题
+        self.cookie_name = cookie_name
 
         if self.target_url.find("detail.damai.cn") != -1:
             self.type = 1
@@ -48,7 +49,6 @@ class Concert(object):
             self.driver.quit()
             raise Exception("***Error:Unsupported Target Url Format:{}***".format(self.target_url))
 
-            
     def isClassPresent(self, item, name, ret=False):
         try:
             result = item.find_element_by_class_name(name)
@@ -59,7 +59,6 @@ class Concert(object):
         except:
             return False
 
-        
     def get_cookie(self):
         self.driver.get(self.damai_url)
         print("###请点击登录###")
@@ -68,13 +67,12 @@ class Concert(object):
         print("###请扫码登录###")
         while self.driver.title == '大麦登录':  # 等待扫码完成
             sleep(1)
-        dump(self.driver.get_cookies(), open("cookies.pkl", "wb"))
+        dump(self.driver.get_cookies(), open(self.cookie_name, "wb"))
         print("###Cookie保存成功###")
 
-        
     def set_cookie(self):
         try:
-            cookies = load(open("cookies.pkl", "rb"))  # 载入cookie
+            cookies = load(open(self.cookie_name, "rb"))  # 载入cookie
             for cookie in cookies:
                 cookie_dict = {
                     'domain': '.damai.cn',  # 必须有，不然就是假登录
@@ -90,9 +88,8 @@ class Concert(object):
         except Exception as e:
             print(e)
 
-            
     def login(self):
-        if not exists('cookies.pkl'):  # 如果不存在cookie.pkl,就获取一下
+        if not exists(self.cookie_name):  # 如果不存在cookie.pkl,就获取一下
             if self.browser == 0: # 选择了Chrome浏览器
                 self.driver = webdriver.Chrome()
             elif self.browser == 1: # 选择了Firefox浏览器
@@ -109,7 +106,7 @@ class Concert(object):
             self.driver = webdriver.Chrome(options=options)
         elif self.browser == 1: # 选择了火狐浏览器
             options = webdriver.FirefoxProfile()
-            options.set_preference('permissions.default.image', 1)
+            options.set_preference('permissions.default.image', 2)
             self.driver = webdriver.Firefox(options)
         else: 
             raise Exception("***错误：未知的浏览器类别***")
@@ -121,21 +118,20 @@ class Concert(object):
         
     def enter_concert(self):
         self.login()
-        try:
-            if self.type == 1:  # detail.damai.cn
-                locator = (By.XPATH, "/html/body/div[1]/div/div[3]/div[1]/a[2]/div")
-            elif self.type == 2:  # piao.damai.cn
-                locator = (By.XPATH, "/html/body/div[1]/div/ul/li[2]/div/label/a[2]")
-            WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
-                EC.text_to_be_present_in_element(locator, self.nick_name))
-            self.status = 1
-            print("###登录成功###")
-        except Exception as e:
-            print(e)
-            self.status = 0
-            self.driver.quit()
-            raise Exception("***错误：登录失败,请检查配置文件昵称或删除cookie.pkl后重试***")
-
+        # try:
+        #     if self.type == 1:  # detail.damai.cn
+        #         locator = (By.XPATH, "/html/body/div[1]/div/div[3]/div[1]/a[2]/div")
+        #     elif self.type == 2:  # piao.damai.cn
+        #         locator = (By.XPATH, "/html/body/div[1]/div/ul/li[2]/div/label/a[2]")
+        #     WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
+        #         EC.text_to_be_present_in_element(locator, self.nick_name))
+        #     self.status = 1
+        #     print("###登录成功###")
+        # except Exception as e:
+        #     print(e)
+        #     self.status = 0
+        #     self.driver.quit()
+        #     raise Exception("***错误：登录失败,请检查配置文件昵称或删除cookie.pkl后重试***")
             
     def choose_ticket_1(self):  # for type 1, i.e., detail.damai.cn
         self.time_start = time()
@@ -209,7 +205,7 @@ class Concert(object):
                 except:
                     raise Exception("***错误：票数增加失败***")
 
-            if buybutton_text == "即将开抢" or buybutton_text == "即将开售":
+            if buybutton_text == "即将开抢" or buybutton_text == "即将开售" or buybutton_text == "提交开售提醒":
                 self.status = 2
                 self.driver.refresh()
                 print('---尚未开售，刷新等待---')
@@ -330,11 +326,15 @@ class Concert(object):
     def check_order_1(self):
         if self.status in [3, 4]:
             print('###开始确认订单###')
-            button_xpath = " //*[@id=\"confirmOrder_1\"]/div[%d]/button" # 同意以上协议并提交订单Xpath
+            button_xpath = "/html/body/div[3]/div[2]/div/div[%d]/button" # 同意以上协议并提交订单Xpath
             button_replace = 8 # 当实名者信息不空时为9，空时为8
 
             self.driver.find_element_by_xpath(
+                '/html/body/div[3]/div[2]/div/div[1]/div[4]/div[1]/div[2]/span/input').clear()
+            self.driver.find_element_by_xpath(
                 '/html/body/div[3]/div[2]/div/div[1]/div[4]/div[1]/div[2]/span/input').send_keys(self.linkman)
+            self.driver.find_element_by_xpath(
+                '/html/body/div[3]/div[2]/div/div[1]/div[4]/div[2]/div[2]/span[2]/input').clear()
             self.driver.find_element_by_xpath(
                 '/html/body/div[3]/div[2]/div/div[1]/div[4]/div[2]/div[2]/span[2]/input').send_keys(self.tel)
 
@@ -342,10 +342,10 @@ class Concert(object):
                 button_replace = 9
                 print('###选择购票人信息###')
                 try:
-                    list_xpath = "//*[@id=\"confirmOrder_1\"]/div[2]/div[2]/div[1]/div[%d]/label/span[1]/input"
-                    for i in range(len(self.real_name)): # 选择第i个实名者
+                    list_xpath = "/html/body/div[3]/div[2]/div/div[2]/div[2]/div[1]/div[%d]/label/span[1]/input"
+                    for i in self.real_name: # 选择第i个实名者
                         WebDriverWait(self.driver, self.total_wait_time, self.refresh_wait_time).until(
-                            EC.presence_of_element_located((By.XPATH, list_xpath%(i+1)))).click()
+                            EC.presence_of_element_located((By.XPATH, list_xpath%(i)))).click()
                 except Exception as e:
                     print(e)
                     raise Exception("***错误：实名信息框未显示，请检查网络或配置文件***")
@@ -417,20 +417,22 @@ class Concert(object):
 
 
 if __name__ == '__main__':
-    # import datetime
-    # startTime = datetime.datetime(2019, 9, 25, 9, 17, 7)  #定时功能：2019-9-25 09:17:07秒开抢
-    # print('抢票程序还未开始...')
-    # while datetime.datetime.now() < startTime:
-    #     sleep(1)
-    # print('开始进入抢票 %s' % startTime)
-    # print('正在执行...')
+    import datetime
+    startTime = datetime.datetime(2021, 9, 29, 11, 50, 0)  #定时功能：2021-9-29 11:50:00秒开抢
+    print("定时功能：2021-9-29 11:50:00秒开抢")
+    print('抢票程序还未开始...')
+    while datetime.datetime.now() < startTime:
+        sleep(1)
+    print('开始进入抢票 %s' % startTime)
+    print('正在执行...')
     try:
-        # with io.open('./config.json', 'r', encoding='utf-8') as f: # 用于py2.7时解注释
-        with open('./config.json', 'r', encoding='utf-8') as f: # 用于py2.7时注释此处
+        # with io.open('./config_kq.json', 'r', encoding='utf-8') as f: # 用于py2.7时解注释
+        with open('./config_mate.json', 'r', encoding='utf-8') as f: # 用于py2.7时注释此处
                     config = loads(f.read())
                 # params: 场次优先级，票价优先级，日期， 实名者序号, 用户昵称， 购买票数， 官网网址， 目标网址， 浏览器
+        assert len(config["real_name"]) == config["ticket_num"], "观影人数量与票数不相符"
         con = Concert(config['sess'], config['price'], config['date'], config['real_name'], config['nick_name'], config['ticket_num'],
-                      config['damai_url'], config['target_url'], config['browser'], config['linkman'], config['tel'])
+                      config['damai_url'], config['target_url'], config['browser'], config['linkman'], config['tel'], config['cookie_name'])
     except Exception as e:
         print(e)
         raise Exception("***错误：初始化失败，请检查配置文件***")
